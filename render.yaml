@@ -11,7 +11,7 @@ services:
       - key: AZURE_PAT
         sync: false
       - key: AZURE_USER
-        sync: false
+        value: Mohamed Hatem Abo Taleb <mhatem@diginationmea.com>
       - key: AZURE_ORG
         value: Digination
       - key: AZURE_PROJECT
