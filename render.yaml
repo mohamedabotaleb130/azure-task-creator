@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: azure-task-creator
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: python web_app.py
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.0"
+      - key: AZURE_PAT
+        sync: false
+      - key: AZURE_USER
+        sync: false
+      - key: AZURE_ORG
+        value: Digination
+      - key: AZURE_PROJECT
+        value: HRDF-2026
+      - key: AZURE_MANAGER
+        value: Khaled Abd El-Rahman Abd El Fattah
