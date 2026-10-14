@@ -145,6 +145,7 @@ INDEX_HTML = """<!DOCTYPE html>
     <input id="user" />
     <label>Date</label>
     <input id="date" type="date" />
+    <p class="status">الوقت ثابت: 9:00 PM</p>
     <label>Task Title</label>
     <input id="title" />
     <label>Work Hours</label>
@@ -257,7 +258,14 @@ INDEX_HTML = """<!DOCTYPE html>
       }
     };
 
-    date.value = new Date().toISOString().slice(0, 10);
+    function localDateValue() {
+      const now = new Date();
+      const year = now.getFullYear();
+      const month = String(now.getMonth() + 1).padStart(2, "0");
+      const day = String(now.getDate()).padStart(2, "0");
+      return year + "-" + month + "-" + day;
+    }
+    date.value = localDateValue();
     title.value = defaults.title;
     hours.value = defaults.hours;
     loadState();

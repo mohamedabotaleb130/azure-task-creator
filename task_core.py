@@ -1,7 +1,8 @@
 import json
 import os
+import re
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import requests
@@ -15,6 +16,7 @@ WORK_HOURS = 8
 DEFAULT_MANAGER = "Khaled Abd El-Rahman Abd El Fattah"
 FIXED_HOUR = 21
 FIXED_MINUTE = 0
+EGYPT_TZ = timezone(timedelta(hours=3))
 DEFAULT_TITLE = "working  new  task"
 CONFIG_PATH = Path(__file__).with_name("user_config.json")
 
@@ -41,17 +43,43 @@ def validate_pat(pat):
     return True, ""
 
 
-def build_finish_date_utc_string(date_value):
-    local_tz = datetime.now().astimezone().tzinfo
-    local_finish = date_value.replace(
-        hour=FIXED_HOUR,
-        minute=FIXED_MINUTE,
-        second=0,
-        microsecond=0,
-        tzinfo=local_tz,
+def egypt_day_bounds(date_value):
+    start_local = datetime(
+        date_value.year,
+        date_value.month,
+        date_value.day,
+        tzinfo=EGYPT_TZ,
     )
-    finish_utc = local_finish.astimezone(timezone.utc)
-    return finish_utc.strftime("%Y-%m-%dT%H:%M:%SZ"), local_finish
+    end_local = start_local + timedelta(days=1)
+    return start_local.astimezone(timezone.utc), end_local.astimezone(timezone.utc)
+
+
+def build_finish_date_utc_string(date_value):
+    local_finish = datetime(
+        date_value.year,
+        date_value.month,
+        date_value.day,
+        FIXED_HOUR,
+        FIXED_MINUTE,
+        0,
+        tzinfo=EGYPT_TZ,
+    )
+    return local_finish.strftime("%Y-%m-%dT%H:%M:%S+03:00"), local_finish
+
+
+def wiql_escape(value):
+    return (value or "").replace("'", "''")
+
+
+def identity_for_query(user):
+    match = re.search(r"<([^>]+)>", user or "")
+    if match:
+        return match.group(1).strip()
+    return (user or "").strip()
+
+
+def profile_key(user):
+    return identity_for_query(user).lower()
 
 
 def load_raw_config():
@@ -141,8 +169,12 @@ def get_active_profile(config):
 def upsert_profile(config, profile, make_active=True):
     profiles = list(config.get("profiles") or [])
     replaced = False
+    incoming_key = profile_key(profile.get("user"))
     for index, existing in enumerate(profiles):
-        if existing.get("id") == profile["id"]:
+        same_id = existing.get("id") == profile["id"]
+        same_user = incoming_key and profile_key(existing.get("user")) == incoming_key
+        if same_id or same_user:
+            profile["id"] = existing.get("id") or profile["id"]
             profiles[index] = profile
             replaced = True
             break
@@ -166,15 +198,18 @@ def profile_choices(config):
 
 
 def get_existing_task_id(org, project, user, date, pat):
+    start_utc, end_utc = egypt_day_bounds(date)
+    assigned = wiql_escape(identity_for_query(user) or user)
     query = {
         "query": f"""
         SELECT [System.Id]
         FROM WorkItems
         WHERE
-            [System.TeamProject] = '{project}'
-            AND [System.AssignedTo] = '{user}'
+            [System.TeamProject] = '{wiql_escape(project)}'
+            AND [System.AssignedTo] = '{assigned}'
             AND [System.WorkItemType] = 'Task'
-            AND [Microsoft.VSTS.Scheduling.FinishDate] = '{date.strftime("%Y-%m-%d")}'
+            AND [Microsoft.VSTS.Scheduling.FinishDate] >= '{start_utc.strftime("%Y-%m-%dT%H:%M:%SZ")}'
+            AND [Microsoft.VSTS.Scheduling.FinishDate] < '{end_utc.strftime("%Y-%m-%dT%H:%M:%SZ")}'
         """
     }
     url = f"https://dev.azure.com/{org}/{project}/_apis/wit/wiql?api-version=7.0"
