@@ -35,64 +35,141 @@ INDEX_HTML = """<!DOCTYPE html>
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="Azure Task" />
   <link rel="manifest" href="/manifest.json" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&display=swap" rel="stylesheet" />
   <title>Azure Task Creator</title>
   <style>
     :root {
-      --bg: #0f172a;
+      --navy: #0b1f4a;
+      --blue: #1d4ed8;
+      --blue-2: #2563eb;
       --card: #ffffff;
       --text: #0f172a;
       --muted: #64748b;
       --line: #e2e8f0;
-      --blue: #2563eb;
+      --soft: #f8fafc;
       --green: #059669;
+      --shadow: 0 12px 32px rgba(15, 23, 42, 0.1);
     }
     * { box-sizing: border-box; }
     body {
       margin: 0;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      background: linear-gradient(180deg, #1e3a8a 0%, #f1f5f9 220px);
+      font-family: Tajawal, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background:
+        radial-gradient(1200px 400px at 100% -10%, #3b82f6 0%, transparent 55%),
+        linear-gradient(180deg, var(--navy) 0 210px, #eef2f7 210px 100%);
       color: var(--text);
       min-height: 100vh;
-      padding: 24px 16px 40px;
+      padding: 20px 16px 36px;
     }
-    h1 { color: #fff; font-size: 22px; margin: 8px 0 4px; }
-    .sub { color: #dbeafe; margin: 0 0 18px; font-size: 14px; }
+    .wrap { max-width: 720px; margin: 0 auto; }
+    .hero {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin: 8px 0 18px;
+    }
+    .logo {
+      width: 48px;
+      height: 48px;
+      border-radius: 14px;
+      background: linear-gradient(180deg, #60a5fa, #1d4ed8);
+      color: #fff;
+      display: grid;
+      place-items: center;
+      font-weight: 800;
+      font-size: 18px;
+      box-shadow: 0 8px 20px rgba(37, 99, 235, 0.35);
+      flex: 0 0 auto;
+    }
+    h1 { color: #fff; font-size: 24px; margin: 0; line-height: 1.2; }
+    .sub { color: #bfdbfe; margin: 4px 0 0; font-size: 13px; }
     .card {
       background: var(--card);
-      border-radius: 18px;
-      padding: 16px;
-      box-shadow: 0 10px 30px rgba(15, 23, 42, 0.12);
+      border-radius: 22px;
+      padding: 18px;
+      box-shadow: var(--shadow);
+      margin-bottom: 14px;
+      border: 1px solid rgba(226, 232, 240, 0.8);
+    }
+    .card-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
       margin-bottom: 14px;
     }
-    label { display: block; font-size: 13px; font-weight: 700; margin: 10px 0 6px; }
-    input, select, textarea {
+    .card-title {
+      margin: 0;
+      font-size: 16px;
+      font-weight: 800;
+    }
+    .badge {
+      background: #dbeafe;
+      color: #1e40af;
+      border-radius: 999px;
+      padding: 6px 10px;
+      font-size: 12px;
+      font-weight: 800;
+      white-space: nowrap;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 12px;
+    }
+    @media (min-width: 640px) {
+      .grid.two { grid-template-columns: 1fr 1fr; }
+    }
+    .field { display: flex; flex-direction: column; gap: 6px; }
+    .field.full { grid-column: 1 / -1; }
+    label { font-size: 13px; font-weight: 800; color: #334155; }
+    input, select {
       width: 100%;
       border: 1px solid var(--line);
       border-radius: 12px;
-      padding: 12px;
+      padding: 12px 14px;
       font-size: 16px;
+      font-family: inherit;
+      background: var(--soft);
+      color: var(--text);
     }
-    .row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
+    input:focus, select:focus {
+      outline: 2px solid #93c5fd;
+      border-color: var(--blue-2);
+      background: #fff;
+    }
+    .hint {
+      margin: 0;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
     button {
       border: 0;
       border-radius: 12px;
       padding: 12px 14px;
       font-size: 15px;
-      font-weight: 700;
+      font-weight: 800;
       cursor: pointer;
+      font-family: inherit;
     }
-    .primary { background: var(--blue); color: #fff; flex: 1; }
+    .primary { background: linear-gradient(180deg, #3b82f6, var(--blue)); color: #fff; flex: 1; }
+    .primary:active { transform: translateY(1px); }
     .secondary { background: #e2e8f0; color: #0f172a; flex: 1; }
     .ok { background: var(--green); color: #fff; flex: 1; }
-    .status { font-size: 14px; color: var(--muted); white-space: pre-wrap; }
-    .status.success { color: var(--green); font-weight: 700; font-size: 16px; }
-    .status.error { color: #dc2626; font-weight: 700; }
-    .hidden { display: none; }
+    .ghost { background: transparent; color: #1d4ed8; padding: 8px 4px; }
+    .status { font-size: 14px; color: var(--muted); white-space: pre-wrap; margin: 10px 0 0; }
+    .status.success { color: var(--green); font-weight: 800; }
+    .status.error { color: #dc2626; font-weight: 800; }
+    .hidden { display: none !important; }
     .toast {
       position: fixed;
       left: 16px;
       right: 16px;
-      top: 16px;
+      top: max(16px, env(safe-area-inset-top));
       z-index: 20;
       background: var(--green);
       color: #fff;
@@ -105,55 +182,100 @@ INDEX_HTML = """<!DOCTYPE html>
   </style>
 </head>
 <body>
-  <div id="toast" class="toast hidden"></div>
-  <h1>Azure Task Creator</h1>
-  <p class="sub">من الآيفون: Safari ثم Share ثم Add to Home Screen</p>
+  <div class="wrap">
+    <div id="toast" class="toast hidden"></div>
+    <header class="hero">
+      <div class="logo">AT</div>
+      <div>
+        <h1>Azure Task Creator</h1>
+        <p class="sub">إنشاء مهمة يومية بسرعة ومن الموبايل</p>
+      </div>
+    </header>
 
-  <div class="card">
-    <label>المستخدم المحفوظ</label>
-    <select id="profileSelect"></select>
-    <div class="row">
-      <button class="secondary" id="addUserBtn" type="button">إضافة مستخدم جديد</button>
-    </div>
-  </div>
+    <section class="card">
+      <div class="card-head">
+        <h2 class="card-title">المستخدم</h2>
+        <button class="ghost" id="addUserBtn" type="button">+ إضافة مستخدم</button>
+      </div>
+      <div class="field">
+        <label>المستخدم المحفوظ</label>
+        <select id="profileSelect"></select>
+      </div>
+    </section>
 
-  <div class="card hidden" id="userFormCard">
-    <label>Assigned User</label>
-    <input id="newUser" placeholder="Name <email@domain.com>" />
-    <label>PAT Token</label>
-    <input id="newPat" type="password" />
-    <label>Organization</label>
-    <input id="newOrg" />
-    <label>Project</label>
-    <input id="newProject" />
-    <label>Direct Manager</label>
-    <input id="newManager" />
-    <div class="row">
-      <button class="ok" id="saveUserBtn" type="button">حفظ المستخدم</button>
-      <button class="secondary" id="cancelUserBtn" type="button">إلغاء</button>
-    </div>
-  </div>
+    <section class="card hidden" id="userFormCard">
+      <div class="card-head">
+        <h2 class="card-title">بيانات المستخدم الجديد</h2>
+      </div>
+      <div class="grid two">
+        <div class="field full">
+          <label>المستخدم</label>
+          <input id="newUser" placeholder="Name <email@domain.com>" />
+        </div>
+        <div class="field full">
+          <label>PAT Token</label>
+          <input id="newPat" type="password" />
+        </div>
+        <div class="field">
+          <label>Organization</label>
+          <input id="newOrg" />
+        </div>
+        <div class="field">
+          <label>Project</label>
+          <input id="newProject" />
+        </div>
+        <div class="field full">
+          <label>Direct Manager</label>
+          <input id="newManager" />
+        </div>
+      </div>
+      <div class="row" style="margin-top:14px">
+        <button class="ok" id="saveUserBtn" type="button">حفظ المستخدم</button>
+        <button class="secondary" id="cancelUserBtn" type="button">إلغاء</button>
+      </div>
+    </section>
 
-  <div class="card">
-    <label>Organization</label>
-    <input id="org" />
-    <label>Project</label>
-    <input id="project" />
-    <label>Direct Manager</label>
-    <input id="manager" />
-    <label>Assigned User</label>
-    <input id="user" />
-    <label>Date</label>
-    <input id="date" type="date" />
-    <p class="status">الوقت ثابت: 9:00 PM</p>
-    <label>Task Title</label>
-    <input id="title" />
-    <label>Work Hours</label>
-    <input id="hours" inputmode="decimal" />
-    <div class="row">
-      <button class="primary" id="createBtn" type="button">Create Task</button>
-    </div>
-    <p class="status" id="status">Ready</p>
+    <section class="card">
+      <div class="card-head">
+        <h2 class="card-title">تفاصيل المهمة</h2>
+        <span class="badge">الوقت ثابت 9:00 PM</span>
+      </div>
+      <div class="grid two">
+        <div class="field">
+          <label>Organization</label>
+          <input id="org" />
+        </div>
+        <div class="field">
+          <label>Project</label>
+          <input id="project" />
+        </div>
+        <div class="field full">
+          <label>Direct Manager</label>
+          <input id="manager" />
+        </div>
+        <div class="field full">
+          <label>Assigned User</label>
+          <input id="user" />
+        </div>
+        <div class="field">
+          <label>التاريخ</label>
+          <input id="date" type="date" />
+          <p class="hint">اليوم فقط. الساعة دائمًا 9:00 مساءً</p>
+        </div>
+        <div class="field">
+          <label>ساعات العمل</label>
+          <input id="hours" inputmode="decimal" />
+        </div>
+        <div class="field full">
+          <label>عنوان المهمة</label>
+          <input id="title" />
+        </div>
+      </div>
+      <div class="row" style="margin-top:16px">
+        <button class="primary" id="createBtn" type="button">إنشاء المهمة</button>
+      </div>
+      <p class="status" id="status">جاهز</p>
+    </section>
   </div>
 
   <script>

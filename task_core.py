@@ -129,9 +129,26 @@ def env_profile():
     )
 
 
+def merge_env_profile(profiles):
+    hosted = env_profile()
+    if not hosted:
+        return profiles
+    incoming = profile_key(hosted.get("user"))
+    for index, existing in enumerate(profiles):
+        same_id = existing.get("id") in ("env", hosted.get("id"))
+        same_user = incoming and profile_key(existing.get("user")) == incoming
+        if same_id or same_user:
+            hosted["id"] = existing.get("id") or hosted["id"]
+            profiles[index] = hosted
+            return profiles
+    profiles.insert(0, hosted)
+    return profiles
+
+
 def normalize_config(raw=None):
     raw = raw if raw is not None else load_raw_config()
     profiles = list(raw.get("profiles") or [])
+    profiles = merge_env_profile(profiles)
     if not profiles:
         hosted = env_profile()
         if hosted:
