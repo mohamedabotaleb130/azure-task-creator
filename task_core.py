@@ -236,7 +236,7 @@ def get_existing_task_id(org, project, user, date, pat):
             AND [Microsoft.VSTS.Scheduling.FinishDate] < '{end_utc.strftime("%Y-%m-%dT%H:%M:%SZ")}'
         """
     }
-    url = f"https://dev.azure.com/{org}/{project}/_apis/wit/wiql?api-version=7.0"
+    url = f"https://dev.azure.com/{org}/{project}/_apis/wit/wiql?timePrecision=true&api-version=7.0"
     response = requests.post(
         url,
         json=query,
