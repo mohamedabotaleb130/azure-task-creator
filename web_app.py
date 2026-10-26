@@ -282,6 +282,26 @@ INDEX_HTML = """<!DOCTYPE html>
     const defaults = __DEFAULTS__;
     let state = { profiles: [], active_profile: "" };
     const localStateKey = "azureTaskCreatorState";
+    const profileSelectEl = document.getElementById("profileSelect");
+    const statusEl = document.getElementById("status");
+    const toastEl = document.getElementById("toast");
+    const orgInput = document.getElementById("org");
+    const projectInput = document.getElementById("project");
+    const managerInput = document.getElementById("manager");
+    const userInput = document.getElementById("user");
+    const dateInput = document.getElementById("date");
+    const hoursInput = document.getElementById("hours");
+    const titleInput = document.getElementById("title");
+    const addUserButtonEl = document.getElementById("addUserBtn");
+    const userFormCardEl = document.getElementById("userFormCard");
+    const newUserInput = document.getElementById("newUser");
+    const newPatInput = document.getElementById("newPat");
+    const newOrgInput = document.getElementById("newOrg");
+    const newProjectInput = document.getElementById("newProject");
+    const newManagerInput = document.getElementById("newManager");
+    const cancelUserButtonEl = document.getElementById("cancelUserBtn");
+    const saveUserButtonEl = document.getElementById("saveUserBtn");
+    const createButtonEl = document.getElementById("createBtn");
 
     function saveLocalState() {
       localStorage.setItem(localStateKey, JSON.stringify(state));
@@ -289,16 +309,16 @@ INDEX_HTML = """<!DOCTYPE html>
 
     function fillTaskForm(profile) {
       if (!profile) return;
-      org.value = profile.org || defaults.org;
-      project.value = profile.project || defaults.project;
-      manager.value = profile.manager || defaults.manager;
-      user.value = profile.user || "";
+      orgInput.value = profile.org || defaults.org;
+      projectInput.value = profile.project || defaults.project;
+      managerInput.value = profile.manager || defaults.manager;
+      userInput.value = profile.user || "";
     }
 
     function showToast(text) {
-      toast.textContent = text;
-      toast.classList.remove("hidden");
-      setTimeout(() => toast.classList.add("hidden"), 4000);
+      toastEl.textContent = text;
+      toastEl.classList.remove("hidden");
+      setTimeout(() => toastEl.classList.add("hidden"), 4000);
     }
 
     async function requestJson(url, options) {
@@ -317,19 +337,19 @@ INDEX_HTML = """<!DOCTYPE html>
     }
 
     function renderProfiles() {
-      profileSelect.innerHTML = "";
+      profileSelectEl.innerHTML = "";
       if (!state.profiles.length) {
         const opt = document.createElement("option");
         opt.value = "";
         opt.textContent = "أضف مستخدمًا لحفظ بياناته على هذا الهاتف";
-        profileSelect.appendChild(opt);
+        profileSelectEl.appendChild(opt);
       }
       state.profiles.forEach((p) => {
         const opt = document.createElement("option");
         opt.value = p.id;
         opt.textContent = p.label || p.user;
         if (p.id === state.active_profile) opt.selected = true;
-        profileSelect.appendChild(opt);
+        profileSelectEl.appendChild(opt);
       });
       const active = state.profiles.find((p) => p.id === state.active_profile);
       fillTaskForm(active);
@@ -348,28 +368,28 @@ INDEX_HTML = """<!DOCTYPE html>
       renderProfiles();
     }
 
-    addUserBtn.onclick = () => {
-      userFormCard.classList.remove("hidden");
-      newUser.value = "";
-      newPat.value = "";
-      newOrg.value = defaults.org;
-      newProject.value = defaults.project;
-      newManager.value = defaults.manager;
+    addUserButtonEl.onclick = () => {
+      userFormCardEl.classList.remove("hidden");
+      newUserInput.value = "";
+      newPatInput.value = "";
+      newOrgInput.value = defaults.org;
+      newProjectInput.value = defaults.project;
+      newManagerInput.value = defaults.manager;
     };
-    cancelUserBtn.onclick = () => userFormCard.classList.add("hidden");
+    cancelUserButtonEl.onclick = () => userFormCardEl.classList.add("hidden");
 
-    saveUserBtn.onclick = async () => {
-      status.textContent = "Saving user...";
-      saveUserBtn.disabled = true;
+    saveUserButtonEl.onclick = async () => {
+      statusEl.textContent = "Saving user...";
+      saveUserButtonEl.disabled = true;
       try {
         const profile = {
           id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()),
-          label: newUser.value.trim(),
-          user: newUser.value.trim(),
-          pat: newPat.value.trim(),
-          org: newOrg.value.trim() || defaults.org,
-          project: newProject.value.trim() || defaults.project,
-          manager: newManager.value.trim() || defaults.manager
+          label: newUserInput.value.trim(),
+          user: newUserInput.value.trim(),
+          pat: newPatInput.value.trim(),
+          org: newOrgInput.value.trim() || defaults.org,
+          project: newProjectInput.value.trim() || defaults.project,
+          manager: newManagerInput.value.trim() || defaults.manager
         };
         if (!profile.user || !profile.pat) throw new Error("أدخل اسم المستخدم وPAT.");
         if (profile.pat.length < 20) throw new Error("PAT قصير جدًا؛ أدخل الرمز كاملًا.");
@@ -385,32 +405,32 @@ INDEX_HTML = """<!DOCTYPE html>
         state.active_profile = profile.id;
         saveLocalState();
         renderProfiles();
-        status.className = "status success";
-        status.textContent = "تم حفظ المستخدم على هذا الهاتف.";
+        statusEl.className = "status success";
+        statusEl.textContent = "تم حفظ المستخدم على هذا الهاتف.";
         showToast("تم الإضافة بنجاح");
-        userFormCard.classList.add("hidden");
+        userFormCardEl.classList.add("hidden");
       } catch (error) {
-        status.className = "status error";
-        status.textContent = error.message || "تعذر حفظ البيانات في المتصفح.";
+        statusEl.className = "status error";
+        statusEl.textContent = error.message || "تعذر حفظ البيانات في المتصفح.";
       } finally {
-        saveUserBtn.disabled = false;
+        saveUserButtonEl.disabled = false;
       }
     };
 
-    profileSelect.onchange = () => {
-      state.active_profile = profileSelect.value;
+    profileSelectEl.onchange = () => {
+      state.active_profile = profileSelectEl.value;
       try {
         saveLocalState();
         fillTaskForm(state.profiles.find((p) => p.id === state.active_profile));
       } catch (error) {
-        status.className = "status error";
-        status.textContent = error.message || "تعذر حفظ الاختيار على هذا الهاتف.";
+        statusEl.className = "status error";
+        statusEl.textContent = error.message || "تعذر حفظ الاختيار على هذا الهاتف.";
       }
     };
 
-    createBtn.onclick = async () => {
-      status.textContent = "Submitting task...";
-      createBtn.disabled = true;
+    createButtonEl.onclick = async () => {
+      statusEl.textContent = "Submitting task...";
+      createButtonEl.disabled = true;
       try {
         const profile = state.profiles.find((p) => p.id === state.active_profile);
         if (!profile) throw new Error("احفظ بيانات المستخدم أولًا على هذا الهاتف.");
@@ -418,24 +438,24 @@ INDEX_HTML = """<!DOCTYPE html>
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            org: org.value,
-            project: project.value,
-            manager: manager.value,
-            user: user.value,
-            date: date.value,
-            title: title.value,
-            hours: hours.value,
+            org: orgInput.value,
+            project: projectInput.value,
+            manager: managerInput.value,
+            user: userInput.value,
+            date: dateInput.value,
+            title: titleInput.value,
+            hours: hoursInput.value,
             pat: profile.pat
           })
         });
-        status.className = "status " + (data.ok ? "success" : "error");
-        status.textContent = data.message || "Done";
+        statusEl.className = "status " + (data.ok ? "success" : "error");
+        statusEl.textContent = data.message || "Done";
         if (data.ok) showToast("تم الإضافة بنجاح");
       } catch (error) {
-        status.className = "status error";
-        status.textContent = error.message || "تعذر الاتصال بالسيرفر.";
+        statusEl.className = "status error";
+        statusEl.textContent = error.message || "تعذر الاتصال بالسيرفر.";
       } finally {
-        createBtn.disabled = false;
+        createButtonEl.disabled = false;
       }
     };
 
@@ -446,12 +466,12 @@ INDEX_HTML = """<!DOCTYPE html>
       const day = String(now.getDate()).padStart(2, "0");
       return year + "-" + month + "-" + day;
     }
-    date.value = localDateValue();
-    title.value = defaults.title;
-    hours.value = defaults.hours;
+    dateInput.value = localDateValue();
+    titleInput.value = defaults.title;
+    hoursInput.value = defaults.hours;
     loadState().catch((error) => {
-      status.className = "status error";
-      status.textContent = error.message || "تعذر تحميل البيانات من السيرفر.";
+      statusEl.className = "status error";
+      statusEl.textContent = error.message || "تعذر تحميل البيانات من السيرفر.";
     });
   </script>
 </body>
