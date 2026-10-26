@@ -34,6 +34,7 @@ INDEX_HTML = """<!DOCTYPE html>
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="Azure Task" />
+  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
   <link rel="manifest" href="/manifest.json" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -601,10 +602,16 @@ INDEX_HTML = """<!DOCTYPE html>
 MANIFEST = {
     "name": "Azure Task Creator",
     "short_name": "Azure Task",
+    "description": "إنشاء وتحديث المهام اليومية في Azure Boards",
     "start_url": "/",
+    "scope": "/",
     "display": "standalone",
     "background_color": "#1e3a8a",
     "theme_color": "#1e3a8a",
+    "icons": [
+      {"src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any"},
+      {"src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable"},
+  ],
 }
 
 
@@ -643,6 +650,26 @@ class AppHandler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         path = urlparse(self.path).path
+        icon_files = {
+            "/apple-touch-icon.png": "apple-touch-icon.png",
+            "/icons/icon-192.png": "icon-192.png",
+            "/icons/icon-512.png": "icon-512.png",
+        }
+        if path in icon_files:
+            icon_path = os.path.join(os.path.dirname(__file__), "static", icon_files[path])
+            try:
+                with open(icon_path, "rb") as icon_file:
+                    body = icon_file.read()
+            except OSError:
+                self.send_error(404)
+                return
+            self.send_response(200)
+            self.send_header("Content-Type", "image/png")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "public, max-age=86400")
+            self.end_headers()
+            self.wfile.write(body)
+            return
         if path == "/manifest.json":
             body = json.dumps(MANIFEST).encode("utf-8")
             self.send_response(200)
