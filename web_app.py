@@ -281,6 +281,11 @@ INDEX_HTML = """<!DOCTYPE html>
   <script>
     const defaults = __DEFAULTS__;
     let state = { profiles: [], active_profile: "" };
+    const localStateKey = "azureTaskCreatorState";
+
+    function saveLocalState() {
+      localStorage.setItem(localStateKey, JSON.stringify(state));
+    }
 
     function fillTaskForm(profile) {
       if (!profile) return;
@@ -313,6 +318,12 @@ INDEX_HTML = """<!DOCTYPE html>
 
     function renderProfiles() {
       profileSelect.innerHTML = "";
+      if (!state.profiles.length) {
+        const opt = document.createElement("option");
+        opt.value = "";
+        opt.textContent = "أضف مستخدمًا لحفظ بياناته على هذا الهاتف";
+        profileSelect.appendChild(opt);
+      }
       state.profiles.forEach((p) => {
         const opt = document.createElement("option");
         opt.value = p.id;
@@ -325,7 +336,15 @@ INDEX_HTML = """<!DOCTYPE html>
     }
 
     async function loadState() {
-      state = await requestJson("/api/state");
+      try {
+        const saved = JSON.parse(localStorage.getItem(localStateKey) || "{}");
+        state = {
+          profiles: Array.isArray(saved.profiles) ? saved.profiles : [],
+          active_profile: saved.active_profile || ""
+        };
+      } catch {
+        state = { profiles: [], active_profile: "" };
+      }
       renderProfiles();
     }
 
@@ -343,42 +362,49 @@ INDEX_HTML = """<!DOCTYPE html>
       status.textContent = "Saving user...";
       saveUserBtn.disabled = true;
       try {
-        const data = await requestJson("/api/users", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            user: newUser.value,
-            pat: newPat.value,
-            org: newOrg.value,
-            project: newProject.value,
-            manager: newManager.value
-          })
-        });
-        status.className = "status " + (data.ok ? "success" : "error");
-        status.textContent = data.message || "Saved";
-        if (!data.ok) return;
+        const profile = {
+          id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()),
+          label: newUser.value.trim(),
+          user: newUser.value.trim(),
+          pat: newPat.value.trim(),
+          org: newOrg.value.trim() || defaults.org,
+          project: newProject.value.trim() || defaults.project,
+          manager: newManager.value.trim() || defaults.manager
+        };
+        if (!profile.user || !profile.pat) throw new Error("أدخل اسم المستخدم وPAT.");
+        if (profile.pat.length < 20) throw new Error("PAT قصير جدًا؛ أدخل الرمز كاملًا.");
+        const existingIndex = state.profiles.findIndex((p) =>
+          (p.user || "").toLowerCase() === profile.user.toLowerCase()
+        );
+        if (existingIndex >= 0) {
+          profile.id = state.profiles[existingIndex].id;
+          state.profiles[existingIndex] = profile;
+        } else {
+          state.profiles.push(profile);
+        }
+        state.active_profile = profile.id;
+        saveLocalState();
+        renderProfiles();
+        status.className = "status success";
+        status.textContent = "تم حفظ المستخدم على هذا الهاتف.";
         showToast("تم الإضافة بنجاح");
         userFormCard.classList.add("hidden");
-        await loadState();
       } catch (error) {
         status.className = "status error";
-        status.textContent = error.message || "تعذر الاتصال بالسيرفر.";
+        status.textContent = error.message || "تعذر حفظ البيانات في المتصفح.";
       } finally {
         saveUserBtn.disabled = false;
       }
     };
 
-    profileSelect.onchange = async () => {
+    profileSelect.onchange = () => {
+      state.active_profile = profileSelect.value;
       try {
-        await requestJson("/api/active", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ id: profileSelect.value })
-        });
-        await loadState();
+        saveLocalState();
+        fillTaskForm(state.profiles.find((p) => p.id === state.active_profile));
       } catch (error) {
         status.className = "status error";
-        status.textContent = error.message || "تعذر الاتصال بالسيرفر.";
+        status.textContent = error.message || "تعذر حفظ الاختيار على هذا الهاتف.";
       }
     };
 
@@ -386,6 +412,8 @@ INDEX_HTML = """<!DOCTYPE html>
       status.textContent = "Submitting task...";
       createBtn.disabled = true;
       try {
+        const profile = state.profiles.find((p) => p.id === state.active_profile);
+        if (!profile) throw new Error("احفظ بيانات المستخدم أولًا على هذا الهاتف.");
         const data = await requestJson("/api/create", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -396,7 +424,8 @@ INDEX_HTML = """<!DOCTYPE html>
             user: user.value,
             date: date.value,
             title: title.value,
-            hours: hours.value
+            hours: hours.value,
+            pat: profile.pat
           })
         });
         status.className = "status " + (data.ok ? "success" : "error");
@@ -510,6 +539,39 @@ class AppHandler(BaseHTTPRequestHandler):
     def do_POST(self):
         path = urlparse(self.path).path
         payload = _read_json(self)
+        if path == "/api/create":
+            selected_org = (payload.get("org") or "").strip()
+            selected_project = (payload.get("project") or "").strip()
+            selected_manager = (payload.get("manager") or "").strip()
+            selected_user = (payload.get("user") or "").strip()
+            selected_pat = (payload.get("pat") or "").strip()
+            title = (payload.get("title") or "").strip()
+            if not all([selected_org, selected_project, selected_manager, selected_user, title, selected_pat]):
+                _json_response(self, {"ok": False, "message": "All task fields and PAT are required."}, 400)
+                return
+            valid, error = validate_pat(selected_pat)
+            if not valid:
+                _json_response(self, {"ok": False, "message": error}, 400)
+                return
+            try:
+                selected_date = datetime.strptime((payload.get("date") or "").strip(), "%Y-%m-%d")
+                selected_hours = float(payload.get("hours"))
+            except (TypeError, ValueError):
+                _json_response(self, {"ok": False, "message": "Date must be YYYY-MM-DD and hours must be a number."}, 400)
+                return
+            success, message = create_task(
+                selected_org,
+                selected_project,
+                selected_user,
+                selected_manager,
+                selected_date,
+                title,
+                selected_hours,
+                selected_pat,
+            )
+            _json_response(self, {"ok": success, "message": message}, 200 if success else 400)
+            return
+
         try:
             config = normalize_config()
         except OSError:
@@ -548,35 +610,6 @@ class AppHandler(BaseHTTPRequestHandler):
                 _json_response(self, {"ok": False, "message": "تعذر حفظ الاختيار على السيرفر. تحقق من صلاحية مجلد التخزين."}, 500)
                 return
             _json_response(self, {"ok": True})
-            return
-
-        if path == "/api/create":
-            active = get_active_profile(config)
-            selected_org = (payload.get("org") or "").strip()
-            selected_project = (payload.get("project") or "").strip()
-            selected_manager = (payload.get("manager") or "").strip()
-            selected_user = (payload.get("user") or "").strip()
-            title = (payload.get("title") or "").strip()
-            if not all([selected_org, selected_project, selected_manager, selected_user, title]):
-                _json_response(self, {"ok": False, "message": "All task fields are required."}, 400)
-                return
-            try:
-                selected_date = datetime.strptime((payload.get("date") or "").strip(), "%Y-%m-%d")
-                selected_hours = float(payload.get("hours"))
-            except (TypeError, ValueError):
-                _json_response(self, {"ok": False, "message": "Date must be YYYY-MM-DD and hours must be a number."}, 400)
-                return
-            success, message = create_task(
-                selected_org,
-                selected_project,
-                selected_user,
-                selected_manager,
-                selected_date,
-                title,
-                selected_hours,
-                (active or {}).get("pat", ""),
-            )
-            _json_response(self, {"ok": success, "message": message}, 200 if success else 400)
             return
 
         self.send_error(404)
