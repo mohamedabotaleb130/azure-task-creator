@@ -1,5 +1,6 @@
 import json
 import os
+import requests
 import socket
 import threading
 from datetime import datetime
@@ -14,6 +15,7 @@ from task_core import (
     WORK_HOURS,
     create_task,
     get_active_profile,
+    get_headers_for_query,
     make_profile,
     normalize_config,
     set_active_profile,
@@ -356,10 +358,31 @@ INDEX_HTML = """<!DOCTYPE html>
     .history-meta { margin-top: 3px; color: #77869a; font-size: 11px; }
     .history-action { color: #087455; background: #eaf8f2; border-radius: 999px; padding: 5px 8px; font-size: 11px; font-weight: 800; white-space: nowrap; }
     .history-empty { padding: 18px 12px; border-radius: 13px; background: #f7f9fc; color: #77869a; text-align: center; font-size: 13px; }
+    .query-dashboard { margin: 0 0 14px; padding: 20px; }
+    .query-stats { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 10px; margin-bottom: 14px; }
+    .query-stat { padding: 13px 15px; border: 1px solid #e5ecf4; border-radius: 15px; background: #f8fafc; }
+    .query-stat span, .query-stat strong { display: block; }
+    .query-stat span { color: #77869a; font-size: 12px; font-weight: 700; }
+    .query-stat strong { margin-top: 4px; color: #213a59; font-size: 22px; }
+    .query-tools { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 10px 0 14px; }
+    .query-tools p { margin: 0; color: #718096; font-size: 12px; }
+    .query-state-list { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 14px; }
+    .query-state-chip { border-radius: 999px; background: #eef4ff; color: #274a80; padding: 6px 10px; font-size: 12px; font-weight: 800; }
+    .query-table-wrap { overflow-x: auto; border: 1px solid #e6edf5; border-radius: 13px; }
+    .query-table { width: 100%; min-width: 560px; border-collapse: collapse; text-align: right; font-size: 13px; }
+    .query-table th, .query-table td { padding: 10px 12px; border-bottom: 1px solid #edf1f6; }
+    .query-table th { background: #f7f9fc; color: #60738d; font-size: 11px; white-space: nowrap; }
+    .query-table tr:last-child td { border-bottom: 0; }
+    .query-table a { color: #1d4ed8; font-weight: 800; text-decoration: none; }
+    .query-loading { padding: 17px 12px; color: #77869a; text-align: center; }
+    .query-error { color: #b42318; background: #fff5f4; border-radius: 12px; padding: 12px; font-size: 13px; }
     @media (max-width: 820px) {
       .dashboard-grid { grid-template-columns: 1fr; }
       .side-column { order: -1; }
       .dashboard-summary { grid-template-columns: repeat(2,minmax(0,1fr)); }
+      .query-stats { grid-template-columns: repeat(3,minmax(0,1fr)); gap: 7px; }
+      .query-stat { padding: 10px; }
+      .query-stat strong { font-size: 19px; }
     }
     @media (max-width: 540px) {
       .wrap { max-width: 100%; }
@@ -368,6 +391,8 @@ INDEX_HTML = """<!DOCTYPE html>
       .hero h1 { font-size: 20px; }
       .sub { font-size: 12px; }
       .dashboard-summary { gap: 8px; margin-bottom: 10px; }
+      .query-dashboard { padding: 15px; }
+      .query-tools { align-items: flex-start; flex-direction: column; }
       .summary-card { padding: 11px 12px; }
       .summary-card strong { font-size: 14px; }
       .task-card { padding: 16px; }
@@ -392,6 +417,27 @@ INDEX_HTML = """<!DOCTYPE html>
       <article class="summary-card"><span>المشروع</span><strong id="projectSummary">—</strong></article>
       <article class="summary-card"><span>التاريخ</span><strong id="dateSummary">—</strong></article>
       <article class="summary-card"><span>وقت التسجيل</span><strong>9:00 مساءً</strong></article>
+    </section>
+
+    <section class="card query-dashboard" aria-label="لوحة استعلام Azure">
+      <div class="card-head">
+        <div>
+          <p class="section-kicker">HRDF-2026</p>
+          <h2 class="card-title">لوحة متابعة الاستعلام</h2>
+        </div>
+        <span class="badge">Azure DevOps</span>
+      </div>
+      <div class="query-tools">
+        <p id="queryUpdatedAt">اضغط تحديث لعرض البيانات الحالية من الاستعلام.</p>
+        <button class="primary" id="refreshQueryBtn" type="button" style="flex:0 0 auto">تحديث البيانات</button>
+      </div>
+      <div class="query-stats" aria-live="polite">
+        <article class="query-stat"><span>إجمالي العناصر</span><strong id="queryTotal">—</strong></article>
+        <article class="query-stat"><span>مفتوحة / نشطة</span><strong id="queryActive">—</strong></article>
+        <article class="query-stat"><span>مكتملة</span><strong id="queryDone">—</strong></article>
+      </div>
+      <div id="queryStateList" class="query-state-list"></div>
+      <div id="queryResults" class="query-loading">بيانات الاستعلام لم تُحمّل بعد.</div>
     </section>
 
     <div class="dashboard-grid">
@@ -529,6 +575,8 @@ INDEX_HTML = """<!DOCTYPE html>
     const dateSummaryEl = document.getElementById("dateSummary");
     const heroDateEl = document.getElementById("heroDate");
     const historyListEl = document.getElementById("historyList");
+    const refreshQueryButtonEl = document.getElementById("refreshQueryBtn");
+    const queryId = "a417b767-a2a0-4f4a-b66a-1e1704878837";
     const profileSelectEl = document.getElementById("profileSelect");
     const statusEl = document.getElementById("status");
     const toastEl = document.getElementById("toast");
@@ -618,6 +666,86 @@ INDEX_HTML = """<!DOCTYPE html>
         renderHistory();
       } catch { /* Azure save is successful even if local history cannot be written. */ }
     }
+
+    function fieldValue(fields, referenceName) {
+      const value = fields[referenceName];
+      if (value && typeof value === "object") return value.displayName || value.name || "";
+      return value == null ? "" : String(value);
+    }
+
+    function renderQueryDashboard(data) {
+      const items = data.items || [];
+      const counts = {};
+      items.forEach((item) => {
+        const stateName = fieldValue(item.fields || {}, "System.State") || "غير محدد";
+        counts[stateName] = (counts[stateName] || 0) + 1;
+      });
+      const doneCount = Object.entries(counts).filter(([name]) => /done|closed|completed|resolved|مكتمل|مغلق/i.test(name)).reduce((sum, [, count]) => sum + count, 0);
+      document.getElementById("queryTotal").textContent = data.total;
+      document.getElementById("queryActive").textContent = Math.max(0, data.total - doneCount);
+      document.getElementById("queryDone").textContent = doneCount;
+      const stateList = document.getElementById("queryStateList");
+      stateList.innerHTML = "";
+      Object.entries(counts).sort((a, b) => b[1] - a[1]).forEach(([name, count]) => {
+        const chip = document.createElement("span");
+        chip.className = "query-state-chip";
+        chip.textContent = `${name}: ${count}`;
+        stateList.appendChild(chip);
+      });
+      const results = document.getElementById("queryResults");
+      results.className = "query-table-wrap";
+      results.innerHTML = "";
+      if (!items.length) {
+        results.className = "query-loading";
+        results.textContent = "لا توجد عناصر في نتائج الاستعلام.";
+      } else {
+        const table = document.createElement("table");
+        table.className = "query-table";
+        const columns = (data.columns || []).filter((column) => column.referenceName && column.referenceName !== "System.Id").slice(0, 6);
+        const head = document.createElement("tr");
+        const idHead = document.createElement("th"); idHead.textContent = "الرقم"; head.appendChild(idHead);
+        columns.forEach((column) => { const th = document.createElement("th"); th.textContent = column.name || column.referenceName; head.appendChild(th); });
+        const thead = document.createElement("thead"); thead.appendChild(head); table.appendChild(thead);
+        const tbody = document.createElement("tbody");
+        items.forEach((item) => {
+          const row = document.createElement("tr");
+          const idCell = document.createElement("td");
+          const link = document.createElement("a");
+          link.href = `https://dev.azure.com/${encodeURIComponent(data.org)}/${encodeURIComponent(data.project)}/_workitems/edit/${item.id}`;
+          link.target = "_blank"; link.rel = "noopener noreferrer"; link.textContent = `#${item.id}`;
+          idCell.appendChild(link); row.appendChild(idCell);
+          columns.forEach((column) => { const cell = document.createElement("td"); cell.textContent = fieldValue(item.fields || {}, column.referenceName); row.appendChild(cell); });
+          tbody.appendChild(row);
+        });
+        table.appendChild(tbody); results.appendChild(table);
+      }
+      document.getElementById("queryUpdatedAt").textContent = `آخر تحديث: ${new Date().toLocaleString("ar-EG")} · المعروض ${items.length} من ${data.total}`;
+    }
+
+    refreshQueryButtonEl.onclick = async () => {
+      const profile = state.profiles.find((p) => p.id === state.active_profile);
+      const results = document.getElementById("queryResults");
+      if (!profile) {
+        results.className = "query-error";
+        results.textContent = "أضف حساب Azure أولًا لعرض نتائج الاستعلام.";
+        return;
+      }
+      refreshQueryButtonEl.disabled = true;
+      results.className = "query-loading";
+      results.textContent = "جارٍ تحميل النتائج من Azure DevOps...";
+      try {
+        const data = await requestJson("/api/query-dashboard", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ org: orgInput.value, project: projectInput.value, pat: profile.pat, query_id: queryId })
+        });
+        renderQueryDashboard(data);
+      } catch (error) {
+        results.className = "query-error";
+        results.textContent = error.message || "تعذر تحميل بيانات الاستعلام.";
+      } finally {
+        refreshQueryButtonEl.disabled = false;
+      }
+    };
 
     function showToast(text) {
       toastEl.textContent = text;
@@ -911,6 +1039,55 @@ class AppHandler(BaseHTTPRequestHandler):
     def do_POST(self):
         path = urlparse(self.path).path
         payload = _read_json(self)
+        if path == "/api/query-dashboard":
+            selected_org = (payload.get("org") or "").strip()
+            selected_project = (payload.get("project") or "").strip()
+            selected_pat = (payload.get("pat") or "").strip()
+            query_id = (payload.get("query_id") or "").strip()
+            if not all([selected_org, selected_project, selected_pat]) or query_id != "a417b767-a2a0-4f4a-b66a-1e1704878837":
+                _json_response(self, {"ok": False, "message": "أدخل بيانات الحساب الصحيحة لعرض الاستعلام."}, 400)
+                return
+            valid, error = validate_pat(selected_pat)
+            if not valid:
+                _json_response(self, {"ok": False, "message": error}, 400)
+                return
+            headers = get_headers_for_query(selected_pat)
+            base_url = f"https://dev.azure.com/{selected_org}/{selected_project}/_apis/wit"
+            try:
+                query_response = requests.get(
+                    f"{base_url}/wiql/{query_id}",
+                    params={"$top": 2000, "api-version": "7.1"}, headers=headers, timeout=30
+                )
+                if not query_response.ok:
+                    message = "تعذر قراءة الاستعلام من Azure DevOps. تحقق من صلاحية PAT (Work Items: Read) ومشاركة الاستعلام."
+                    _json_response(self, {"ok": False, "message": message}, 400)
+                    return
+                query_data = query_response.json()
+                references = [int(item["id"]) for item in query_data.get("workItems", []) if item.get("id")]
+                query_columns = query_data.get("columns", [])
+                fields = list(dict.fromkeys(
+                    [column.get("referenceName") for column in query_columns if column.get("referenceName")]
+                    + ["System.Id", "System.Title", "System.State", "System.AssignedTo", "System.WorkItemType"]
+                ))
+                work_items = []
+                for offset in range(0, len(references), 200):
+                    batch_response = requests.post(
+                        f"{base_url}/workitemsbatch", params={"api-version": "7.1"}, headers=headers,
+                        json={"ids": references[offset:offset + 200], "fields": fields}, timeout=30
+                    )
+                    if not batch_response.ok:
+                        _json_response(self, {"ok": False, "message": "تم تشغيل الاستعلام لكن تعذر تحميل تفاصيل عناصره."}, 502)
+                        return
+                    work_items.extend(batch_response.json().get("value", []))
+                _json_response(self, {
+                    "ok": True, "org": selected_org, "project": selected_project,
+                    "total": len(references), "columns": query_columns, "items": work_items
+                })
+            except requests.RequestException:
+                _json_response(self, {"ok": False, "message": "تعذر الاتصال بـ Azure DevOps. تحقق من الإنترنت وحاول مجددًا."}, 502)
+            except (ValueError, KeyError, TypeError):
+                _json_response(self, {"ok": False, "message": "استجابة الاستعلام من Azure غير متوقعة."}, 502)
+            return
         if path == "/api/create":
             selected_org = (payload.get("org") or "").strip()
             selected_project = (payload.get("project") or "").strip()
