@@ -179,6 +179,115 @@ INDEX_HTML = """<!DOCTYPE html>
       text-align: center;
       box-shadow: 0 10px 30px rgba(5, 150, 105, 0.35);
     }
+    :root {
+      --navy: #10243d;
+      --blue: #2456d8;
+      --blue-2: #3d6ce8;
+      --text: #17283d;
+      --muted: #718096;
+      --line: #e3eaf2;
+      --soft: #f6f8fb;
+      --green: #078768;
+      --shadow: 0 10px 28px rgba(16, 36, 61, 0.08);
+    }
+    body {
+      background: linear-gradient(180deg, #eaf1fb 0, #f5f7fb 290px, #f5f7fb 100%);
+      min-height: 100dvh;
+      padding: max(14px, env(safe-area-inset-top)) 14px calc(28px + env(safe-area-inset-bottom));
+    }
+    .wrap { max-width: 560px; }
+    .hero {
+      position: relative;
+      overflow: hidden;
+      min-height: 126px;
+      align-items: flex-start;
+      padding: 23px 20px;
+      margin: 0 0 14px;
+      border-radius: 24px;
+      background: linear-gradient(125deg, #10243d 0%, #183d69 62%, #2860aa 100%);
+      box-shadow: 0 16px 34px rgba(16, 36, 61, 0.18);
+    }
+    .hero::after {
+      content: "";
+      position: absolute;
+      width: 190px;
+      height: 190px;
+      left: -62px;
+      top: -90px;
+      border: 1px solid rgba(255,255,255,.12);
+      border-radius: 50%;
+      box-shadow: 0 0 0 22px rgba(255,255,255,.035), 0 0 0 48px rgba(255,255,255,.025);
+      pointer-events: none;
+    }
+    .logo {
+      width: 46px;
+      height: 46px;
+      border: 1px solid rgba(255,255,255,.24);
+      background: rgba(255,255,255,.13);
+      box-shadow: none;
+    }
+    h1 { font-size: 23px; }
+    .sub { color: #d9e7fb; font-size: 14px; }
+    .card {
+      padding: 17px;
+      border-radius: 20px;
+      box-shadow: 0 6px 20px rgba(16,36,61,.055);
+      border-color: #e7edf5;
+      margin-bottom: 12px;
+    }
+    .card-head { margin-bottom: 12px; }
+    .card-title { font-size: 17px; }
+    .badge { background: #edf3ff; color: #3158a4; padding: 6px 11px; }
+    .grid.two { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 10px; }
+    .field.full { grid-column: 1 / -1; }
+    label { font-size: 13px; color: #40536b; }
+    input, select {
+      min-height: 48px;
+      border-radius: 13px;
+      border-color: #dfe7f0;
+      background: #fbfcfe;
+    }
+    input:focus, select:focus { outline: 3px solid rgba(61,108,232,.14); }
+    .hint { line-height: 1.55; }
+    button {
+      min-height: 46px;
+      border-radius: 13px;
+      transition: transform .15s ease, opacity .15s ease;
+    }
+    button:disabled { opacity: .65; cursor: wait; }
+    .primary {
+      min-height: 54px;
+      background: linear-gradient(135deg, #3470ed, #2456d8);
+      box-shadow: 0 8px 18px rgba(36,86,216,.2);
+    }
+    .ok { background: linear-gradient(135deg,#0b9b78,#078768); }
+    .secondary { background: #eef2f7; }
+    .ghost { color: var(--blue); white-space: nowrap; }
+    .status {
+      border-radius: 12px;
+      padding: 10px 12px;
+      background: #f5f7fa;
+      line-height: 1.55;
+    }
+    .status.success { color: #087455; background: #eaf8f2; }
+    .status.error { color: #b42318; background: #fff0ef; }
+    #profileSelect { font-weight: 700; }
+    #createBtn { width: 100%; }
+    .task-actions {
+      position: sticky;
+      bottom: env(safe-area-inset-bottom);
+      z-index: 4;
+      padding-top: 10px;
+      background: linear-gradient(180deg, rgba(255,255,255,0), #fff 20%);
+    }
+    .toast { border-radius: 14px; }
+    @media (max-width: 370px) {
+      body { padding-left: 10px; padding-right: 10px; }
+      .hero { padding: 19px 15px; }
+      .card { padding: 14px; }
+      .grid.two { grid-template-columns: 1fr; gap: 10px; }
+      .card-head { align-items: flex-start; }
+    }
   </style>
 </head>
 <body>
@@ -187,94 +296,96 @@ INDEX_HTML = """<!DOCTYPE html>
     <header class="hero">
       <div class="logo">AT</div>
       <div>
-        <h1>Azure Task Creator</h1>
-        <p class="sub">إنشاء مهمة يومية بسرعة ومن الموبايل</p>
+        <h1>منشئ المهام اليومية</h1>
+        <p class="sub">سجّل وقتك في Azure Boards بسهولة</p>
       </div>
     </header>
 
     <section class="card">
       <div class="card-head">
-        <h2 class="card-title">المستخدم</h2>
-        <button class="ghost" id="addUserBtn" type="button">+ إضافة مستخدم</button>
+        <h2 class="card-title">حساب Azure</h2>
+        <button class="ghost" id="addUserBtn" type="button">＋ إضافة حساب</button>
       </div>
       <div class="field">
-        <label>المستخدم المحفوظ</label>
+        <label for="profileSelect">الحساب المستخدم</label>
         <select id="profileSelect"></select>
+        <p class="hint">الحسابات محفوظة على هذا الجهاز فقط.</p>
       </div>
     </section>
 
     <section class="card hidden" id="userFormCard">
       <div class="card-head">
-        <h2 class="card-title">بيانات المستخدم الجديد</h2>
+          <h2 class="card-title">إضافة حساب Azure</h2>
       </div>
       <div class="grid two">
         <div class="field full">
-          <label>المستخدم</label>
+          <label for="newUser">اسم المستخدم في Azure</label>
           <input id="newUser" placeholder="Name <email@domain.com>" />
         </div>
         <div class="field full">
-          <label>PAT Token</label>
+          <label for="newPat">رمز الوصول الشخصي (PAT)</label>
           <input id="newPat" type="password" />
+          <p class="hint">يُحفظ الرمز في متصفح هذا الجهاز ويُرسل عند إنشاء المهمة.</p>
         </div>
         <div class="field">
-          <label>Organization</label>
+          <label for="newOrg">المنظمة</label>
           <input id="newOrg" />
         </div>
         <div class="field">
-          <label>Project</label>
+          <label for="newProject">المشروع</label>
           <input id="newProject" />
         </div>
         <div class="field full">
-          <label>Direct Manager</label>
+          <label for="newManager">المدير المباشر</label>
           <input id="newManager" />
         </div>
       </div>
       <div class="row" style="margin-top:14px">
-        <button class="ok" id="saveUserBtn" type="button">حفظ المستخدم</button>
+        <button class="ok" id="saveUserBtn" type="button">حفظ الحساب على الجهاز</button>
         <button class="secondary" id="cancelUserBtn" type="button">إلغاء</button>
       </div>
     </section>
 
     <section class="card">
       <div class="card-head">
-        <h2 class="card-title">تفاصيل المهمة</h2>
-        <span class="badge">الوقت ثابت 9:00 PM</span>
+        <h2 class="card-title">بيانات المهمة</h2>
+        <span class="badge">التسجيل 9:00 م</span>
       </div>
       <div class="grid two">
         <div class="field">
-          <label>Organization</label>
+          <label for="org">المنظمة</label>
           <input id="org" />
         </div>
         <div class="field">
-          <label>Project</label>
+          <label for="project">المشروع</label>
           <input id="project" />
         </div>
         <div class="field full">
-          <label>Direct Manager</label>
+          <label for="manager">المدير المباشر</label>
           <input id="manager" />
         </div>
         <div class="field full">
-          <label>Assigned User</label>
+          <label for="user">المستخدم المكلّف</label>
           <input id="user" />
         </div>
         <div class="field">
-          <label>التاريخ</label>
+          <label for="date">تاريخ المهمة</label>
           <input id="date" type="date" />
-          <p class="hint">اليوم فقط. الساعة دائمًا 9:00 مساءً</p>
+          <p class="hint">وقت نهاية المهمة ثابت: 9:00 مساءً</p>
         </div>
         <div class="field">
-          <label>ساعات العمل</label>
+          <label for="hours">ساعات العمل</label>
           <input id="hours" inputmode="decimal" />
         </div>
         <div class="field full">
-          <label>عنوان المهمة</label>
+          <label for="title">وصف المهمة</label>
           <input id="title" />
         </div>
       </div>
-      <div class="row" style="margin-top:16px">
-        <button class="primary" id="createBtn" type="button">إنشاء المهمة</button>
+      <div class="task-actions">
+        <button class="primary" id="createBtn" type="button">إنشاء / تحديث المهمة</button>
       </div>
-      <p class="status" id="status">جاهز</p>
+      <p class="status" id="status" role="status" aria-live="polite">جاهز</p>
     </section>
   </div>
 
@@ -366,6 +477,9 @@ INDEX_HTML = """<!DOCTYPE html>
         state = { profiles: [], active_profile: "" };
       }
       renderProfiles();
+      if (!state.profiles.length) {
+        statusEl.textContent = "ابدأ بإضافة حساب Azure، ثم احفظ المهمة من هنا.";
+      }
     }
 
     addUserButtonEl.onclick = () => {
@@ -379,8 +493,10 @@ INDEX_HTML = """<!DOCTYPE html>
     cancelUserButtonEl.onclick = () => userFormCardEl.classList.add("hidden");
 
     saveUserButtonEl.onclick = async () => {
-      statusEl.textContent = "Saving user...";
+      statusEl.textContent = "جارٍ حفظ الحساب على هذا الجهاز...";
       saveUserButtonEl.disabled = true;
+      const originalButtonText = saveUserButtonEl.textContent;
+      saveUserButtonEl.textContent = "جارٍ الحفظ...";
       try {
         const profile = {
           id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()),
@@ -407,13 +523,14 @@ INDEX_HTML = """<!DOCTYPE html>
         renderProfiles();
         statusEl.className = "status success";
         statusEl.textContent = "تم حفظ المستخدم على هذا الهاتف.";
-        showToast("تم الإضافة بنجاح");
+        showToast("تم حفظ الحساب على هذا الجهاز");
         userFormCardEl.classList.add("hidden");
       } catch (error) {
         statusEl.className = "status error";
         statusEl.textContent = error.message || "تعذر حفظ البيانات في المتصفح.";
       } finally {
         saveUserButtonEl.disabled = false;
+        saveUserButtonEl.textContent = originalButtonText;
       }
     };
 
@@ -429,8 +546,10 @@ INDEX_HTML = """<!DOCTYPE html>
     };
 
     createButtonEl.onclick = async () => {
-      statusEl.textContent = "Submitting task...";
+      statusEl.textContent = "جارٍ إرسال المهمة إلى Azure...";
       createButtonEl.disabled = true;
+      const originalButtonText = createButtonEl.textContent;
+      createButtonEl.textContent = "جارٍ الحفظ في Azure...";
       try {
         const profile = state.profiles.find((p) => p.id === state.active_profile);
         if (!profile) throw new Error("احفظ بيانات المستخدم أولًا على هذا الهاتف.");
@@ -450,12 +569,13 @@ INDEX_HTML = """<!DOCTYPE html>
         });
         statusEl.className = "status " + (data.ok ? "success" : "error");
         statusEl.textContent = data.message || "Done";
-        if (data.ok) showToast("تم الإضافة بنجاح");
+        if (data.ok) showToast("تم حفظ المهمة بنجاح");
       } catch (error) {
         statusEl.className = "status error";
         statusEl.textContent = error.message || "تعذر الاتصال بالسيرفر.";
       } finally {
         createButtonEl.disabled = false;
+        createButtonEl.textContent = originalButtonText;
       }
     };
 
