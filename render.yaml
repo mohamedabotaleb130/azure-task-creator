@@ -2,18 +2,12 @@ services:
   - type: web
     name: azure-task-creator
     runtime: python
-    plan: starter
+    plan: free
     buildCommand: pip install -r requirements.txt
     startCommand: python web_app.py
-    disk:
-      name: azure-task-data
-      mountPath: /var/data
-      sizeGB: 1
     envVars:
       - key: PYTHON_VERSION
         value: "3.12.0"
-      - key: AZURE_TASK_DATA_DIR
-        value: /var/data
       - key: AZURE_PAT
         sync: false
       - key: AZURE_USER
