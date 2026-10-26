@@ -5,7 +5,7 @@ import socket
 import threading
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 
 from task_core import (
     DEFAULT_MANAGER,
@@ -15,6 +15,7 @@ from task_core import (
     WORK_HOURS,
     create_task,
     get_active_profile,
+    get_headers_for_create,
     get_headers_for_query,
     make_profile,
     normalize_config,
@@ -374,6 +375,23 @@ INDEX_HTML = """<!DOCTYPE html>
     .query-table th { background: #f7f9fc; color: #60738d; font-size: 11px; white-space: nowrap; }
     .query-table tr:last-child td { border-bottom: 0; }
     .query-table a { color: #1d4ed8; font-weight: 800; text-decoration: none; }
+    .query-table td { vertical-align: middle; }
+    .query-state-badge { display: inline-flex; align-items: center; gap: 6px; border: 1px solid #d5dce6; border-radius: 999px; padding: 4px 9px; font-size: 11px; font-weight: 800; white-space: nowrap; }
+    .query-state-badge::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+    .query-state-badge.category-proposed { color: #526174; background: #f1f4f8; border-color: #d7dee8; }
+    .query-state-badge.category-inprogress { color: #1559b7; background: #eaf3ff; border-color: #bfd8fa; }
+    .query-state-badge.category-resolved { color: #a9580a; background: #fff4df; border-color: #f1d49b; }
+    .query-state-badge.category-completed { color: #087455; background: #e7f8f1; border-color: #b6e8d3; }
+    .query-state-badge.category-removed { color: #7c3aed; background: #f2eefe; border-color: #d9ccfa; }
+    .query-state-chip.category-proposed { color: #526174; background: #f1f4f8; }
+    .query-state-chip.category-inprogress { color: #1559b7; background: #eaf3ff; }
+    .query-state-chip.category-resolved { color: #a9580a; background: #fff4df; }
+    .query-state-chip.category-completed { color: #087455; background: #e7f8f1; }
+    .query-state-chip.category-removed { color: #7c3aed; background: #f2eefe; }
+    .query-state-control { display: flex; align-items: center; gap: 5px; min-width: 210px; }
+    .query-state-control select { min-width: 118px; width: auto; padding: 7px 9px; border-radius: 9px; font-size: 12px; }
+    .query-state-save { padding: 8px 10px; color: #fff; background: #1d4ed8; border-radius: 9px; font-size: 12px; white-space: nowrap; }
+    .query-state-save:disabled { opacity: .55; cursor: wait; }
     .query-loading { padding: 17px 12px; color: #77869a; text-align: center; }
     .query-error { color: #b42318; background: #fff5f4; border-radius: 12px; padding: 12px; font-size: 13px; }
     @media (max-width: 820px) {
@@ -433,7 +451,7 @@ INDEX_HTML = """<!DOCTYPE html>
       </div>
       <div class="query-stats" aria-live="polite">
         <article class="query-stat"><span>إجمالي العناصر</span><strong id="queryTotal">—</strong></article>
-        <article class="query-stat"><span>مفتوحة / نشطة</span><strong id="queryActive">—</strong></article>
+        <article class="query-stat"><span>قيد التنفيذ</span><strong id="queryActive">—</strong></article>
         <article class="query-stat"><span>مكتملة</span><strong id="queryDone">—</strong></article>
       </div>
       <div id="queryStateList" class="query-state-list"></div>
@@ -676,13 +694,17 @@ INDEX_HTML = """<!DOCTYPE html>
     function renderQueryDashboard(data) {
       const items = data.items || [];
       const counts = {};
+      const stateCatalog = data.statesByType || {};
       items.forEach((item) => {
         const stateName = fieldValue(item.fields || {}, "System.State") || "غير محدد";
         counts[stateName] = (counts[stateName] || 0) + 1;
       });
-      const doneCount = Object.entries(counts).filter(([name]) => /done|closed|completed|resolved|مكتمل|مغلق/i.test(name)).reduce((sum, [, count]) => sum + count, 0);
+      const completedNames = new Set(Object.values(stateCatalog).flat().filter((stateItem) => (stateItem.category || "").toLowerCase() === "completed").map((stateItem) => stateItem.name));
+      const activeNames = new Set(Object.values(stateCatalog).flat().filter((stateItem) => ["proposed", "inprogress"].includes((stateItem.category || "").toLowerCase())).map((stateItem) => stateItem.name));
+      const doneCount = Object.entries(counts).filter(([name]) => completedNames.size ? completedNames.has(name) : /done|closed|completed|مكتمل|مغلق/i.test(name)).reduce((sum, [, count]) => sum + count, 0);
+      const activeCount = activeNames.size ? Object.entries(counts).filter(([name]) => activeNames.has(name)).reduce((sum, [, count]) => sum + count, 0) : Math.max(0, data.total - doneCount);
       document.getElementById("queryTotal").textContent = data.total;
-      document.getElementById("queryActive").textContent = Math.max(0, data.total - doneCount);
+      document.getElementById("queryActive").textContent = activeCount;
       document.getElementById("queryDone").textContent = doneCount;
       const stateList = document.getElementById("queryStateList");
       stateList.innerHTML = "";
@@ -690,6 +712,11 @@ INDEX_HTML = """<!DOCTYPE html>
         const chip = document.createElement("span");
         chip.className = "query-state-chip";
         chip.textContent = `${name}: ${count}`;
+        const stateInfo = Object.values(stateCatalog).flat().find((candidate) => candidate.name === name);
+        if (stateInfo) chip.classList.add(`category-${(stateInfo.category || "").toLowerCase().replace(/[^a-z]/g, "")}`);
+        if (stateInfo && /^[0-9a-f]{6}$/i.test(stateInfo.color || "")) {
+          chip.style.border = `1px solid #${stateInfo.color}`;
+        }
         stateList.appendChild(chip);
       });
       const results = document.getElementById("queryResults");
@@ -701,10 +728,12 @@ INDEX_HTML = """<!DOCTYPE html>
       } else {
         const table = document.createElement("table");
         table.className = "query-table";
-        const columns = (data.columns || []).filter((column) => column.referenceName && column.referenceName !== "System.Id").slice(0, 6);
+        const columns = (data.columns || []).filter((column) => column.referenceName && column.referenceName !== "System.Id" && column.referenceName !== "System.State").slice(0, 6);
         const head = document.createElement("tr");
         const idHead = document.createElement("th"); idHead.textContent = "الرقم"; head.appendChild(idHead);
+        const stateHead = document.createElement("th"); stateHead.textContent = "الحالة"; head.appendChild(stateHead);
         columns.forEach((column) => { const th = document.createElement("th"); th.textContent = column.name || column.referenceName; head.appendChild(th); });
+        const actionHead = document.createElement("th"); actionHead.textContent = "تغيير الحالة"; head.appendChild(actionHead);
         const thead = document.createElement("thead"); thead.appendChild(head); table.appendChild(thead);
         const tbody = document.createElement("tbody");
         items.forEach((item) => {
@@ -714,7 +743,50 @@ INDEX_HTML = """<!DOCTYPE html>
           link.href = `https://dev.azure.com/${encodeURIComponent(data.org)}/${encodeURIComponent(data.project)}/_workitems/edit/${item.id}`;
           link.target = "_blank"; link.rel = "noopener noreferrer"; link.textContent = `#${item.id}`;
           idCell.appendChild(link); row.appendChild(idCell);
+          const itemFields = item.fields || {};
+          const itemType = fieldValue(itemFields, "System.WorkItemType") || "Task";
+          const currentState = fieldValue(itemFields, "System.State");
+          const states = stateCatalog[itemType] || [{ name: currentState || "غير محدد", color: "64748b", category: "" }];
+          const stateCell = document.createElement("td");
+          const badge = document.createElement("span");
+          const currentStateInfo = states.find((stateItem) => stateItem.name === currentState);
+          badge.className = "query-state-badge";
+          badge.textContent = currentState || "غير محدد";
+          if (currentStateInfo) badge.classList.add(`category-${(currentStateInfo.category || "").toLowerCase().replace(/[^a-z]/g, "")}`);
+          if (currentStateInfo && /^[0-9a-f]{6}$/i.test(currentStateInfo.color || "")) {
+            badge.style.color = `#${currentStateInfo.color}`;
+            badge.style.borderColor = `#${currentStateInfo.color}`;
+          }
+          stateCell.appendChild(badge); row.appendChild(stateCell);
           columns.forEach((column) => { const cell = document.createElement("td"); cell.textContent = fieldValue(item.fields || {}, column.referenceName); row.appendChild(cell); });
+          const actionCell = document.createElement("td");
+          const controls = document.createElement("div"); controls.className = "query-state-control";
+          const select = document.createElement("select"); select.setAttribute("aria-label", `الحالة الجديدة للمهمة ${item.id}`);
+          states.forEach((stateItem) => {
+            const option = document.createElement("option"); option.value = stateItem.name; option.textContent = stateItem.name;
+            if (stateItem.name === currentState) option.selected = true;
+            select.appendChild(option);
+          });
+          const saveButton = document.createElement("button"); saveButton.className = "query-state-save"; saveButton.type = "button"; saveButton.textContent = "حفظ الحالة";
+          saveButton.onclick = async () => {
+            if (select.value === currentState) { showToast("الحالة لم تتغير"); return; }
+            const activeProfile = state.profiles.find((p) => p.id === state.active_profile);
+            if (!activeProfile) { showToast("اختر حساب Azure أولًا"); return; }
+            saveButton.disabled = true; saveButton.textContent = "جارٍ الحفظ...";
+            try {
+              await requestJson("/api/update-state", {
+                method: "POST", headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ org: data.org, project: data.project, pat: activeProfile.pat, id: item.id, state: select.value })
+              });
+              itemFields["System.State"] = select.value;
+              renderQueryDashboard(data);
+              showToast(`تم تغيير حالة المهمة #${item.id}`);
+            } catch (error) {
+              saveButton.disabled = false; saveButton.textContent = "حفظ الحالة";
+              showToast(error.message || "تعذر تغيير الحالة");
+            }
+          };
+          controls.append(select, saveButton); actionCell.appendChild(controls); row.appendChild(actionCell);
           tbody.appendChild(row);
         });
         table.appendChild(tbody); results.appendChild(table);
@@ -1079,14 +1151,77 @@ class AppHandler(BaseHTTPRequestHandler):
                         _json_response(self, {"ok": False, "message": "تم تشغيل الاستعلام لكن تعذر تحميل تفاصيل عناصره."}, 502)
                         return
                     work_items.extend(batch_response.json().get("value", []))
+                states_by_type = {}
+                work_types = {str(item.get("fields", {}).get("System.WorkItemType") or "Task") for item in work_items}
+                for work_type in work_types:
+                    states_response = requests.get(
+                        f"{base_url}/workitemtypes/{quote(work_type, safe='')}/states",
+                        params={"api-version": "7.1"}, headers=headers, timeout=30
+                    )
+                    if states_response.ok:
+                        states_by_type[work_type] = states_response.json().get("value", [])
                 _json_response(self, {
                     "ok": True, "org": selected_org, "project": selected_project,
-                    "total": len(references), "columns": query_columns, "items": work_items
+                    "total": len(references), "columns": query_columns, "items": work_items,
+                    "statesByType": states_by_type
                 })
             except requests.RequestException:
                 _json_response(self, {"ok": False, "message": "تعذر الاتصال بـ Azure DevOps. تحقق من الإنترنت وحاول مجددًا."}, 502)
             except (ValueError, KeyError, TypeError):
                 _json_response(self, {"ok": False, "message": "استجابة الاستعلام من Azure غير متوقعة."}, 502)
+            return
+        if path == "/api/update-state":
+            selected_org = (payload.get("org") or "").strip()
+            selected_project = (payload.get("project") or "").strip()
+            selected_pat = (payload.get("pat") or "").strip()
+            selected_state = (payload.get("state") or "").strip()
+            try:
+                work_item_id = int(payload.get("id"))
+            except (TypeError, ValueError):
+                work_item_id = 0
+            if not all([selected_org, selected_project, selected_pat, selected_state]) or work_item_id <= 0:
+                _json_response(self, {"ok": False, "message": "بيانات تغيير الحالة غير مكتملة."}, 400)
+                return
+            valid, error = validate_pat(selected_pat)
+            if not valid:
+                _json_response(self, {"ok": False, "message": error}, 400)
+                return
+            query_headers = get_headers_for_query(selected_pat)
+            base_url = f"https://dev.azure.com/{selected_org}/{selected_project}/_apis/wit"
+            try:
+                item_response = requests.get(
+                    f"{base_url}/workitems/{work_item_id}",
+                    params={"fields": "System.WorkItemType,System.State", "api-version": "7.1"},
+                    headers=query_headers, timeout=30
+                )
+                if not item_response.ok:
+                    _json_response(self, {"ok": False, "message": "تعذر قراءة المهمة من Azure DevOps."}, 400)
+                    return
+                work_type = item_response.json().get("fields", {}).get("System.WorkItemType") or "Task"
+                states_response = requests.get(
+                    f"{base_url}/workitemtypes/{quote(work_type, safe='')}/states",
+                    params={"api-version": "7.1"}, headers=query_headers, timeout=30
+                )
+                if not states_response.ok:
+                    _json_response(self, {"ok": False, "message": "تعذر قراءة الحالات المسموحة لهذا النوع."}, 502)
+                    return
+                allowed_states = {entry.get("name") for entry in states_response.json().get("value", [])}
+                if selected_state not in allowed_states:
+                    _json_response(self, {"ok": False, "message": "الحالة المختارة غير متاحة لهذا النوع من المهام."}, 400)
+                    return
+                update_response = requests.patch(
+                    f"{base_url}/workitems/{work_item_id}", params={"api-version": "7.1"},
+                    headers=get_headers_for_create(selected_pat),
+                    json=[{"op": "add", "path": "/fields/System.State", "value": selected_state}], timeout=30
+                )
+                if not update_response.ok:
+                    _json_response(self, {"ok": False, "message": "رفض Azure تغيير الحالة. تحقق من انتقال الحالة وصلاحية PAT للتعديل."}, 400)
+                    return
+                _json_response(self, {"ok": True, "state": selected_state})
+            except requests.RequestException:
+                _json_response(self, {"ok": False, "message": "تعذر الاتصال بـ Azure DevOps."}, 502)
+            except (ValueError, KeyError, TypeError):
+                _json_response(self, {"ok": False, "message": "استجابة Azure غير متوقعة أثناء تغيير الحالة."}, 502)
             return
         if path == "/api/create":
             selected_org = (payload.get("org") or "").strip()
