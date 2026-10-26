@@ -18,7 +18,9 @@ FIXED_HOUR = 21
 FIXED_MINUTE = 0
 EGYPT_TZ = timezone(timedelta(hours=3))
 DEFAULT_TITLE = "working  new  task"
-CONFIG_PATH = Path(__file__).with_name("user_config.json")
+CONFIG_PATH = Path(
+    os.environ.get("AZURE_TASK_DATA_DIR", str(Path(__file__).parent))
+).expanduser() / "user_config.json"
 
 
 def get_headers_for_create(pat):
@@ -94,8 +96,13 @@ def load_raw_config():
 
 
 def save_user_config(config):
-    with CONFIG_PATH.open("w", encoding="utf-8") as f:
+    CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    temporary_path = CONFIG_PATH.with_name(
+        f"{CONFIG_PATH.name}.{uuid.uuid4().hex}.tmp"
+    )
+    with temporary_path.open("w", encoding="utf-8") as f:
         json.dump(config, f, ensure_ascii=True, indent=2)
+    os.replace(temporary_path, CONFIG_PATH)
 
 
 def make_profile(user, pat, org=ORG, project=PROJECT, manager=DEFAULT_MANAGER, profile_id=None):

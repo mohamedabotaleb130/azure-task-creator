@@ -296,6 +296,21 @@ INDEX_HTML = """<!DOCTYPE html>
       setTimeout(() => toast.classList.add("hidden"), 4000);
     }
 
+    async function requestJson(url, options) {
+      const response = await fetch(url, options);
+      const body = await response.text();
+      let data;
+      try {
+        data = JSON.parse(body);
+      } catch {
+        throw new Error(`خطأ من السيرفر (${response.status}). أعد المحاولة، ولو استمرت المشكلة راجع سجل الخدمة.`);
+      }
+      if (!response.ok) {
+        throw new Error(data.message || `تعذر الحفظ (${response.status}).`);
+      }
+      return data;
+    }
+
     function renderProfiles() {
       profileSelect.innerHTML = "";
       state.profiles.forEach((p) => {
@@ -310,8 +325,7 @@ INDEX_HTML = """<!DOCTYPE html>
     }
 
     async function loadState() {
-      const res = await fetch("/api/state");
-      state = await res.json();
+      state = await requestJson("/api/state");
       renderProfiles();
     }
 
@@ -327,56 +341,72 @@ INDEX_HTML = """<!DOCTYPE html>
 
     saveUserBtn.onclick = async () => {
       status.textContent = "Saving user...";
-      const res = await fetch("/api/users", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          user: newUser.value,
-          pat: newPat.value,
-          org: newOrg.value,
-          project: newProject.value,
-          manager: newManager.value
-        })
-      });
-      const data = await res.json();
-      status.className = "status " + (data.ok ? "success" : "error");
-      status.textContent = data.message || "Saved";
-      if (data.ok) {
+      saveUserBtn.disabled = true;
+      try {
+        const data = await requestJson("/api/users", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            user: newUser.value,
+            pat: newPat.value,
+            org: newOrg.value,
+            project: newProject.value,
+            manager: newManager.value
+          })
+        });
+        status.className = "status " + (data.ok ? "success" : "error");
+        status.textContent = data.message || "Saved";
+        if (!data.ok) return;
         showToast("تم الإضافة بنجاح");
         userFormCard.classList.add("hidden");
         await loadState();
+      } catch (error) {
+        status.className = "status error";
+        status.textContent = error.message || "تعذر الاتصال بالسيرفر.";
+      } finally {
+        saveUserBtn.disabled = false;
       }
     };
 
     profileSelect.onchange = async () => {
-      await fetch("/api/active", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: profileSelect.value })
-      });
-      await loadState();
+      try {
+        await requestJson("/api/active", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: profileSelect.value })
+        });
+        await loadState();
+      } catch (error) {
+        status.className = "status error";
+        status.textContent = error.message || "تعذر الاتصال بالسيرفر.";
+      }
     };
 
     createBtn.onclick = async () => {
       status.textContent = "Submitting task...";
-      const res = await fetch("/api/create", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          org: org.value,
-          project: project.value,
-          manager: manager.value,
-          user: user.value,
-          date: date.value,
-          title: title.value,
-          hours: hours.value
-        })
-      });
-      const data = await res.json();
-      status.className = "status " + (data.ok ? "success" : "error");
-      status.textContent = data.message || "Done";
-      if (data.ok) {
-        showToast("تم الإضافة بنجاح");
+      createBtn.disabled = true;
+      try {
+        const data = await requestJson("/api/create", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            org: org.value,
+            project: project.value,
+            manager: manager.value,
+            user: user.value,
+            date: date.value,
+            title: title.value,
+            hours: hours.value
+          })
+        });
+        status.className = "status " + (data.ok ? "success" : "error");
+        status.textContent = data.message || "Done";
+        if (data.ok) showToast("تم الإضافة بنجاح");
+      } catch (error) {
+        status.className = "status error";
+        status.textContent = error.message || "تعذر الاتصال بالسيرفر.";
+      } finally {
+        createBtn.disabled = false;
       }
     };
 
@@ -390,7 +420,10 @@ INDEX_HTML = """<!DOCTYPE html>
     date.value = localDateValue();
     title.value = defaults.title;
     hours.value = defaults.hours;
-    loadState();
+    loadState().catch((error) => {
+      status.className = "status error";
+      status.textContent = error.message || "تعذر تحميل البيانات من السيرفر.";
+    });
   </script>
 </body>
 </html>
@@ -450,7 +483,11 @@ class AppHandler(BaseHTTPRequestHandler):
             self.wfile.write(body)
             return
         if path == "/api/state":
-            config = normalize_config()
+            try:
+                config = normalize_config()
+            except OSError:
+                _json_response(self, {"ok": False, "message": "تعذر حفظ البيانات على السيرفر. تحقق من صلاحية مجلد التخزين."}, 500)
+                return
             _json_response(self, public_config(config))
             return
         if path in ("/", "/index.html"):
@@ -473,7 +510,11 @@ class AppHandler(BaseHTTPRequestHandler):
     def do_POST(self):
         path = urlparse(self.path).path
         payload = _read_json(self)
-        config = normalize_config()
+        try:
+            config = normalize_config()
+        except OSError:
+            _json_response(self, {"ok": False, "message": "تعذر حفظ البيانات على السيرفر. تحقق من صلاحية مجلد التخزين."}, 500)
+            return
 
         if path == "/api/users":
             user = (payload.get("user") or "").strip()
@@ -492,12 +533,20 @@ class AppHandler(BaseHTTPRequestHandler):
                 (payload.get("project") or "").strip(),
                 (payload.get("manager") or "").strip(),
             )
-            upsert_profile(config, profile)
+            try:
+                upsert_profile(config, profile)
+            except OSError:
+                _json_response(self, {"ok": False, "message": "تعذر حفظ المستخدم على السيرفر. تحقق من صلاحية مجلد التخزين."}, 500)
+                return
             _json_response(self, {"ok": True, "message": "تم الإضافة بنجاح", "id": profile["id"]})
             return
 
         if path == "/api/active":
-            set_active_profile(config, payload.get("id"))
+            try:
+                set_active_profile(config, payload.get("id"))
+            except OSError:
+                _json_response(self, {"ok": False, "message": "تعذر حفظ الاختيار على السيرفر. تحقق من صلاحية مجلد التخزين."}, 500)
+                return
             _json_response(self, {"ok": True})
             return
 
